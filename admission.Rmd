@@ -1,0 +1,110 @@
+---
+title: "Graduate Admission"
+output: pdf_document
+date: "2025-01-08"
+---
+
+# 1. Load and Explore the Dataset
+
+We are going to predict Chance of Admission on the basis of various predictors.
+
+```{r}
+library(tidyverse)
+data <- read.csv("adm_data.csv")
+
+# View the first few rows of the dataset
+head(data)
+
+# Remove the first column
+data <- data[, -1]
+
+# Print basic statistics and structure
+print("\nSummary Statistics:")
+print(summary(data))
+print("\nStructure of the Dataset:")
+print(str(data))
+
+# Check for missing values
+print("\nMissing Values in the Dataset:")
+print(colSums(is.na(data)))
+```
+
+The dataset contains 400 observations and 8 variables: GRE.Score, TOEFL.Score, University.Rating, SOP, LOR, CGPA, Research, and Chance.of.Admit. 
+There are no missing values across all columns as confirmed by colSums(is.na(data)), which returned zeros for each variable.
+
+# 2. Visualize the Data
+
+```{r}
+# Correlation matrix
+correlation_matrix <- cor(data)
+print("\nCorrelation Matrix:")
+print(correlation_matrix)
+
+# Custom column labels
+custom_labels <- c("GRE Score", "TOEFL Score", "University Rating", 
+                   "SOP", "LOR", "CGPA", "Research", "Admission Probability")
+colnames(data) <- custom_labels
+
+# Scatterplot matrix
+library(GGally)
+ggpairs(data[, sapply(data, is.numeric)], 
+        columnLabels = custom_labels, 
+        progress = FALSE)
+```
+
+These correlations can help in understanding the relationships between the features and their potential impact on the chance of admission. The correlation matrix shows that GRE.Score and TOEFL.Score are highly correlated (0.84), indicating a strong relationship between these two variables. Other pairs, such as CGPA and Chance.of.Admit (0.87), also exhibit notable correlations, suggesting that some predictors are related to each other in the dataset.
+
+# 3. Split the Data into Training and Testing Sets
+
+Cross-validation was used to assess the model's performance more reliably by splitting the data into 10 subsets (folds). In each iteration, the model was trained on 9 of the 10 folds and tested on the remaining fold. This process was repeated 10 times, each time using a different fold as the test set, ensuring that each data point was used for both training and testing. This helps mitigate issues like overfitting or underfitting, which could arise if the model were evaluated using a single training/test split.
+
+```{r}
+library(caret)
+set.seed(123)
+index <- createDataPartition(data$`Admission Probability`, p = 0.8, list = FALSE)
+train <- data[index, ]
+test <- data[-index, ]
+
+# 4. Set up Cross-Validation
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+cv_model <- train(`Admission Probability` ~ ., 
+                  data = train, 
+                  method = "lm", 
+                  trControl = train_control)
+
+# Print cross-validation results
+print(cv_model)
+```
+
+# 5. Evaluate Model Performance on the Test Set
+
+We evaluated the model on a separate test dataset (which was not used in the training or validation process) to simulate how the model would perform in real-world scenarios.
+
+```{r}
+predictions <- predict(cv_model, newdata = test)
+
+# Mean Squared Error (MSE) on Test Set
+mse <- mean((predictions - test$`Admission Probability`)^2)
+cat("Mean Squared Error (MSE) on Test Set:", mse, "\n")
+# Calculate RMSE on Test Set
+rmse <- sqrt(mse)
+cat("Root Mean Squared Error (RMSE) on Test Set:", rmse, "\n")
+
+# R-squared on Test Set
+rsq <- 1 - sum((predictions - test$`Admission Probability`)^2) / sum((mean(test$`Admission Probability`) - test$`Admission Probability`)^2)
+cat("R-squared on Test Set:", rsq, "\n")
+```
+
+The model shows good performance on the test set with an RMSE of 0.0662 and an R-squared of 0.8028, indicating that it explains over 80% of the variance in the data.
+
+# 6. Checking for Multicollinearity (Variance Inflation Factor - VIF)
+
+Multicollinearity refers to a situation in regression analysis where two or more predictor variables (independent variables) are highly correlated with each other. This can cause problems because the model struggles to distinguish between the individual effects of those correlated predictors on the dependent variable.
+
+```{r}
+library(car)
+vif_model <- lm(`Admission Probability`~ ., data = train)
+vif(vif_model)
+```
+
+VIF values indicate the degree of multicollinearity between predictors. A VIF greater than 5-10 suggests that a variable is highly collinear with others in the model. Based on the values, none of the VIFs seem to be excessively high, indicating that multicollinearity is not a major concern in this model.
